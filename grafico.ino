@@ -30,23 +30,17 @@ void setup () {
  
  
 void draw () {
-     // Mapeie e desenhe a linha para o novo ponto de dados
      inByte = map(inByte, 0, 1023, 0, height);
      height_new = height - inByte; 
      line(xPos - 1, height_old, xPos, height_new);
      height_old = height_new;
-    
-      // na borda da tela, volte ao início:
       if (xPos >= width) {
         xPos = 0;
         background(0xff);
       } 
       else {
-        // incrementa a posição horizontal:
         xPos++;
-      }
-      
-      // desenhe texto para BPM periodicamente
+      }    
       if (millis() % 128 == 0){
         fill(0xFF);
         rect(0, 0, 200, 20);
@@ -57,27 +51,21 @@ void draw () {
   
 void serialEvent (Serial myPort) 
 {
-  // obtenha a string ASCII:
   String inString = myPort.readStringUntil('\n');
  
   if (inString != null) 
   {
-    // apare qualquer espaço em branco:
     inString = trim(inString);
  
-    // Se a detecção de derivações for verdadeira, notifique com linha azul
     if (inString.equals("!")) 
     { 
-      stroke(0, 0, 0xff); // Defina o curso para azul (R, G, B)
-      inByte = 512;  // meio do intervalo ADC (linha plana)
+      stroke(0, 0, 0xff); 
+      inByte = 512;  
     }
-    // Se os dados são bons, deixe-os passar
     else 
     {
-      stroke(0xff, 0, 0); //Set stroke to red ( R, G, B)
+      stroke(0xff, 0, 0); 
       inByte = float(inString); 
-      
-      // verificação de cálculo de BPM
       if (inByte > threshold && belowThreshold == true)
       {
         calculateBPM();
@@ -93,15 +81,96 @@ void serialEvent (Serial myPort)
   
 void calculateBPM () 
 {  
-  int beat_new = millis();    // obtém o milissegundo atual
-  int diff = beat_new - beat_old;    // encontre o tempo entre as duas últimas batidas
-  float currentBPM = 60000 / diff;    // converter em batidas por minuto
-  beats[beatIndex] = currentBPM;  // armazene em array para converter a média
+  int beat_new = millis();    
+  int diff = beat_new - beat_old;   
+  float currentBPM = 60000 / diff;   
+  beats[beatIndex] = currentBPM;  
   float total = 0.0;
   for (int i = 0; i < 500; i++){
     total += beats[i];
   }
   BPM = int(total / 500);
   beat_old = beat_new;
-  beatIndex = (beatIndex + 1) % 500;  // percorre a matriz em vez de usar a fila FIFO
+  beatIndex = (beatIndex + 1) % 500;  
+}
+
+#include <ESP8266WiFi.h>
+#include <PubSubClient.h>
+
+const char* ssid = "gigante";
+const char* password = "GG*98700";
+
+const char* mqtt_server = "BROKER_IP";
+const int mqtt_port = 1883;
+const char* mqtt_user = "nicole";
+const char* mqtt_password = "nicole123";    
+
+WiFiClient espClient;
+PubSubClient client(espClient);
+
+void setup_wifi() {
+  delay(10);
+  Serial.println();
+  Serial.print("Conectando a ");
+  Serial.println(ssid);
+
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("");
+  Serial.println("WiFi conectado");
+  Serial.println("Endereço IP: ");
+  Serial.println(WiFi.localIP());
+}
+
+void reconnect() {
+  while (!client.connected()) {
+    Serial.print("Tentando conexão MQTT...");
+    if (client.connect("ESP8266Client", mqtt_user, mqtt_password)) {
+      Serial.println("conectado");
+      client.subscribe("topico/teste");
+    } else {
+      Serial.print("falhou, rc=");
+      Serial.print(client.state());
+      Serial.println(" tentando novamente em 5 segundos");
+      delay(5000);
+    }
+  }
+}
+
+void callback(char* topic, byte* payload, unsigned int length) {
+  Serial.print("Mensagem recebida [");
+  Serial.print(topic);
+  Serial.print("] ");
+  for (int i = 0; i < length; i++) {
+    Serial.print((char)payload[i]);
+  }
+  Serial.println();
+}
+
+void setup() {
+  Serial.begin(115200);
+  setup_wifi();
+  client.setServer(mqtt_server, mqtt_port);
+  client.setCallback(callback);
+}
+
+void loop() {
+  if (!client.connected()) {
+    reconnect();
+  }
+  client.loop();
+  
+  static unsigned long lastPublish = 0;
+  if (millis() - lastPublish > 5000) {
+    lastPublish = millis();
+    String msg = "Olá do ESP8266";
+    Serial.print("Publicando mensagem: ");
+    Serial.println(msg);
+    client.publish("topico/teste", msg.c_str());
+  }
 }
